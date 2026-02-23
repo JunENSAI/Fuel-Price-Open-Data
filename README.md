@@ -2,7 +2,7 @@
 
 Ce projet vise à essayer de pratiquer les données publiques ouvertes sur le prix des carburant en France. L'architecture pensée est  : Postgresql pour le schema relationnel , Python pour la collecte via API et traitement en temps réel. Le but est d'expérimenter l'ingestion des données pour une base pereine et contrôlée.
 
-Les données qui seront traitées proviennent de l'api (ouvert à tous et à toutes) des prix de carburant en France : https://swagger.2aaz.fr/?urls.primaryName=Fuel%20prices%20API%20(prix-carburants)#/ (qui est plutôt une réutilisation mais fonctionnel).
+Les données qui seront traitées proviennent de l'api (ouvert à tous et à toutes) des prix de carburant en France : https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records .
 
 ## Structure du projet 
 
