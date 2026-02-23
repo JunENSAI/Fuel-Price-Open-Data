@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 
 class FuelPriceClient:
     """
-    Client pour l'API des prix des carburants (wrapper non-officiel).
+    Client pour l'API des prix des carburants.
     Doc: https://swagger.2aaz.fr/
     """
 
