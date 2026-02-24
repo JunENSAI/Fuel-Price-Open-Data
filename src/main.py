@@ -1,8 +1,20 @@
 import sys
+import os
+import time
+import json
 from urllib.parse import quote_plus
 from extract.api_client import FuelPriceClient
 from transform.data_processor import FuelDataProcessor
 from load.db_loader import DatabaseLoader
+
+def load_departements_list(filepath="data/departements.json"):
+    """Charge la liste des codes départements depuis le fichier JSON."""
+    if not os.path.exists(filepath):
+        print(f"ERREUR : Le fichier {filepath} est introuvable.")
+        return []
+    
+    with open(filepath, 'r') as f:
+        return json.load(f)
 
 def main():
     """
@@ -22,45 +34,52 @@ def main():
     DB_USER = "user_fuel"
     DB_URL = f"postgresql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
-    DEPT_CIBLE = "35" 
-    LIMIT_RESULTS = 100
-
-    # Extract
-    print(f"Phase Extraction ")
     client = FuelPriceClient()
-
-    raw_data = client.get_data_by_department(dept_code=DEPT_CIBLE, limit=LIMIT_RESULTS)
-    
-    if not raw_data:
-        print("ERREUR : Aucune donnée récupérée. Vérifiez votre connexion internet ou le code département.")
-        sys.exit(1)
-        
-    print(f"   => {len(raw_data)} stations brutes récupérées.")
-
-    # Transform
-    print(f" Phase Transformation")
     processor = FuelDataProcessor()
-
-    df_clean = processor.process_data(raw_data)
     
-    if df_clean.empty:
-        print("AVERTISSEMENT : Aucun prix valide trouvé après transformation (formats incorrects ou données vides).")
-        sys.exit(0)
-
-    print(f"   => {len(df_clean)} lignes de prix prêtes à l'insertion.")
-    print(f"   => Aperçu :\n{df_clean[['api_station_id', 'fuel_name', 'price_value', 'update_time']].head(3)}")
-
-    # Load
-    print(f"Phase Chargement dans ({DB_NAME})...")
     try:
         loader = DatabaseLoader(DB_URL)
-        loader.load_data(df_clean)
-        print("   -> Chargement terminé avec succès.")
     except Exception as e:
-        print(f"ERREUR CRITIQUE lors du chargement en base : {e}")
+        print(f"ERREUR CRITIQUE BDD : {e}")
         sys.exit(1)
     
-    print("--- Pipeline ETL terminé avec succès ---")
+    dept_list = load_departements_list()
+    if not dept_list:
+        sys.exit(1)
+    
+    total_stations_global = 0
+
+    for dept in dept_list:
+        print(f"\nTraitement Département : {dept}")
+        
+        # 1. Extraction
+        raw_data = client.get_all_data_by_dept(dept)
+        
+        if not raw_data:
+            print(f"   -> Aucune donnée.")
+            continue
+
+        # 2. Transformation
+        df_clean = processor.process_data(raw_data)
+        
+        if df_clean.empty:
+            print(f"   -> Données vides après transformation.")
+            continue
+
+        # 3. Chargement
+        try:
+            loader.load_data(df_clean)
+            count = len(df_clean)
+            total_stations_global += count
+            print(f"   -> Succès : {count} prix insérés en base.")
+        except Exception as e:
+            print(f"   -> ERREUR Chargement BDD : {e}")
+
+        # pause pour ne saturer l'appel à l'api
+        time.sleep(1)
+
+    print(f"\n--- FIN DU TRAITEMENT ---")
+    print(f"Total global des prix mis à jour : {total_stations_global}")
 
 if __name__ == "__main__":
     main()
