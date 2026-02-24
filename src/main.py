@@ -11,7 +11,7 @@ def main():
     et le chargement dans le schéma en étoile PostgreSQL.
     """
     
-    # --- 1. CONFIGURATION ---
+    # Config
     raw_password = "open-data@fuel"
     encoded_password = quote_plus(raw_password)
     
@@ -22,14 +22,11 @@ def main():
     DB_USER = "user_fuel"
     DB_URL = f"postgresql://{DB_USER}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     
-    # Paramètres métier
     DEPT_CIBLE = "35" 
     LIMIT_RESULTS = 100
 
-    print(f"--- Démarrage du pipeline ETL (Cible : Dépt {DEPT_CIBLE}) ---")
-
-    # --- 2. EXTRACTION (Extract) ---
-    print(f"[1/3] Extraction des données depuis data.economie.gouv.fr...")
+    # Extract
+    print(f"Phase Extraction ")
     client = FuelPriceClient()
 
     raw_data = client.get_data_by_department(dept_code=DEPT_CIBLE, limit=LIMIT_RESULTS)
@@ -38,10 +35,10 @@ def main():
         print("ERREUR : Aucune donnée récupérée. Vérifiez votre connexion internet ou le code département.")
         sys.exit(1)
         
-    print(f"   -> {len(raw_data)} stations brutes récupérées.")
+    print(f"   => {len(raw_data)} stations brutes récupérées.")
 
-    # --- 3. TRANSFORMATION (Transform) ---
-    print(f"[2/3] Transformation et nettoyage des données...")
+    # Transform
+    print(f" Phase Transformation")
     processor = FuelDataProcessor()
 
     df_clean = processor.process_data(raw_data)
@@ -50,11 +47,11 @@ def main():
         print("AVERTISSEMENT : Aucun prix valide trouvé après transformation (formats incorrects ou données vides).")
         sys.exit(0)
 
-    print(f"   -> {len(df_clean)} lignes de prix prêtes à l'insertion.")
-    print(f"   -> Aperçu :\n{df_clean[['api_station_id', 'fuel_name', 'price_value', 'update_time']].head(3)}")
+    print(f"   => {len(df_clean)} lignes de prix prêtes à l'insertion.")
+    print(f"   => Aperçu :\n{df_clean[['api_station_id', 'fuel_name', 'price_value', 'update_time']].head(3)}")
 
-    # --- 4. CHARGEMENT (Load) ---
-    print(f"[3/3] Chargement dans PostgreSQL ({DB_NAME})...")
+    # Load
+    print(f"Phase Chargement dans ({DB_NAME})...")
     try:
         loader = DatabaseLoader(DB_URL)
         loader.load_data(df_clean)
