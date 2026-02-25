@@ -76,3 +76,51 @@ def get_volume_data(engine):
         ORDER BY total_volume DESC
     """
     return load_data(sql, engine)
+
+def get_price_trends(engine, start_year, end_year, selected_depts, selected_fuels):
+    """
+    Récupère l'historique mensuel des prix, filtré par départements et carburants.
+    Aggrège la moyenne sur l'ensemble des départements sélectionnés.
+    """
+    dept_filter = ""
+    if selected_depts:
+        dept_list_str = "', '".join(selected_depts)
+        dept_filter = f"AND mv.dept_code IN ('{dept_list_str}')"
+
+    fuel_filter = ""
+    if selected_fuels:
+        fuel_list_str = "', '".join(selected_fuels)
+        fuel_filter = f"AND mv.fuel_name IN ('{fuel_list_str}')"
+
+    sql = f"""
+        SELECT 
+            mv.year, 
+            mv.month, 
+            mv.fuel_name,
+            SUM(mv.avg_price * mv.price_count) / SUM(mv.price_count) as weighted_price
+        FROM mv_monthly_avg_price mv
+        WHERE mv.year BETWEEN {start_year} AND {end_year}
+        {dept_filter}
+        {fuel_filter}
+        GROUP BY mv.year, mv.month, mv.fuel_name
+        ORDER BY mv.year, mv.month
+    """
+    
+    return load_data(sql, engine)
+
+def get_dept_comparison(engine, year, fuel_name):
+    """
+    Compare le prix moyen de chaque département pour une année et un carburant précis.
+    Utile pour le graphique 'Top / Flop' des départements.
+    """
+    sql = f"""
+        SELECT 
+            mv.dept_code,
+            AVG(mv.avg_price) as annual_avg_price
+        FROM mv_monthly_avg_price mv
+        WHERE mv.year = {year}
+          AND mv.fuel_name = '{fuel_name}'
+        GROUP BY mv.dept_code
+        ORDER BY annual_avg_price ASC
+    """
+    return load_data(sql, engine)
