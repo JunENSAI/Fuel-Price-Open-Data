@@ -1,3 +1,4 @@
+import pandas as pd
 from .database import load_data
 
 def get_departments_list(engine):
@@ -7,23 +8,42 @@ def get_departments_list(engine):
     return df['dept_code'].tolist()
 
 def get_kpis(engine, start_year, end_year, depts):
-    """Récupère les chiffres clés filtrés."""
+    """
+    Récupère les chiffres clés filtrés.
+    """
     
-    dept_filter = ""
+    mv_dept_filter = ""
+    station_dept_filter = ""
+    
     if depts:
         dept_list_str = "', '".join(depts)
-        dept_filter = f"AND dept_code IN ('{dept_list_str}')"
+        mv_dept_filter = f"AND dept_code IN ('{dept_list_str}')"
+        station_dept_filter = f"AND dept_code IN ('{dept_list_str}')"
 
-    sql = f"""
-        SELECT 
-            COUNT(DISTINCT s.api_station_id) as total_stations,
-            SUM(mv.price_count) as total_price_points
-        FROM mv_monthly_avg_price mv
-        JOIN dim_station s ON mv.dept_code = s.dept_code
-        WHERE mv.year BETWEEN {start_year} AND {end_year}
-        {dept_filter}
+    sql_prices = f"""
+        SELECT SUM(price_count) as total_price_points
+        FROM mv_monthly_avg_price
+        WHERE year BETWEEN {start_year} AND {end_year}
+        {mv_dept_filter}
     """
-    return load_data(sql, engine)
+    
+    sql_stations = f"""
+        SELECT COUNT(api_station_id) as total_stations
+        FROM dim_station
+        WHERE 1=1
+        {station_dept_filter}
+    """
+
+    df_prices = load_data(sql_prices, engine)
+    df_stations = load_data(sql_stations, engine)
+    
+    total_prices = df_prices['total_price_points'].iloc[0] if not df_prices.empty else 0
+    total_stations = df_stations['total_stations'].iloc[0] if not df_stations.empty else 0
+
+    return pd.DataFrame({
+        'total_stations': [total_stations],
+        'total_price_points': [total_prices]
+    })
 
 def get_price_evolution_data(engine, start_year, end_year, depts):
     """

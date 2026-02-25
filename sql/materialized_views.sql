@@ -4,7 +4,8 @@ SELECT
     d.month,
     s.dept_code,
     f.fuel_name,
-    AVG(fp.price_value) as avg_price
+    AVG(fp.price_value) as avg_price,
+    COUNT(*) as price_count
 FROM fact_fuel_price fp
 JOIN dim_date d ON fp.date_id = d.date_id
 JOIN dim_station s ON fp.station_id = s.station_id
