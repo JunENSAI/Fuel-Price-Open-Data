@@ -1,71 +1,156 @@
 # Fuel-Price-Open-Data
 
-Ce projet vise à essayer de pratiquer les données publiques ouvertes sur le prix des carburant en France. L'architecture pensée est  : Postgresql pour le schema relationnel , Python pour la collecte via API et traitement en temps réel. Le but est d'expérimenter l'ingestion des données pour une base pereine et contrôlée.
+Ce projet vise à pratiquer l'exploitation de données publiques ouvertes sur le prix des carburants en France. L'architecture repose sur PostgreSQL pour le schéma relationnel et Python pour la collecte (API/XML) et le traitement. L'objectif est d'expérimenter l'ingestion de données pour bâtir une base pérenne, contrôlée et performante.
 
-Les données qui seront traitées proviennent de l'api (ouvert à tous et à toutes) des prix de carburant en France : https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records .
+Les données proviennent de l'API officielle des prix des carburants en France :
+- HIstorique : https://www.prix-carburants.gouv.fr/rubrique/opendata/
+
+- API : https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records .
 
 ## Structure du projet 
 
 ```plaintext
-projet_open_data/
-├── data/                  # Stockage temporaire des données (optionnel)
-├── sql/                   # Scripts d'initialisation de la base de données
-│   ├── create_dimensions.sql
-│   └── create_facts.sql
+Fuel-Price-Open-Data/
+├── .streamlit/            # Configuration Streamlit & Secrets (API Keys)
+├── data/                  # Données locales
+│   ├── raw/               # Stockage temporaire (XML Historique)
+│   └── departements.json  # Config départements cibles
+├── sql/                   # Scripts SQL (Schéma, Index, Vues)
 ├── src/                   # Code source Python
-│   ├── extract/           # Modules d'appel à l'API
-│   ├── transform/         # Nettoyage et formatage des données 
-│   ├── load/              # Chargement en base (SQLAlchemy)
-│   └── main.py            # Point d'entrée de l'orchestrateur
-├── poetry.lock            # Fichier de verrouillage des versions exactes
-├── pyproject.toml         # Définition des dépendances du projet
-└── README.md              # Documentation du projet
+│   ├── dashboard/         # Visualisation (Streamlit, Cartes, IA)
+│   ├── extract/           # Acquisition (API Client & Scrapper XML)
+│   ├── transform/         # Parsers JSON & XML
+│   ├── load/              # Chargement BDD (SQLAlchemy, Upserts)
+│   ├── import_history.py  # Script ingestion Batch (2015-2025)
+│   └── main.py            # Orchestrateur ETL quotidien
+├── app.py                 # Point d'entrée Web
+├── poetry.lock            # Verrouillage des versions
+└── pyproject.toml         # Dépendances du projet
 ```
 
-## Architecture
+## Installation et Exécution
 
-### Gestion des packages Python
+### Pré-requis 
 
-Pour ne pas s'embêter avec les dépendances entre les librairies python le fichier `poetry.lock` contiendra déjà tous les dépendances nécessaire à ce projet.
+- Python 3.10+ (https://www.python.org/downloads/)
 
+- PostgreSQL (https://www.postgresql.org/download/)
 
-### PostgreSQL
+- Poetry (gestionnaire de paquets) [https://python-poetry.org/]
 
-La configuration basique prévaut dans PostgreSQL :
+### Mise en place
 
-- création d'utilisateur et affectation mot de passe :
-    ```text
+1. **Installation des dépendances :**
+
+    ```bash
+    poetry install
+    ```
+
+2. **Configuration de la Base de Données :** 
+
+    Connectez-vous à votre serveur PostgreSQL et exécutez les commandes suivantes (à effectuer une seule fois) :
+
+    ```sql
+    -- Création de l'utilisateur dédié
     CREATE USER user_fuel WITH PASSWORD 'open-data@fuel';
-    ```
-- création base de données pour cet utilisateur :
-    ```text
+
+    -- Création de la base
     CREATE DATABASE fuel_db OWNER user_fuel;
-    ```
-- accorder toutes les privilèges à cet utilisateur sur la base :
-    ```text
+
+    -- Attribution des privilèges
     GRANT ALL PRIVILEGES ON DATABASE fuel_db TO user_fuel;
     ```
 
-La structure des bases de données qui seront enregistrées dans `fuel_db` suit un **schema étoile** qui visent à separer : les mesures quantitatives (faits) et les axes d'analyse descriptifs (dimensions). Ce modèle optimise les performances de lecture pour les requêtes analytiques (OLAP) au détriment de l'écriture.
+    Ensuite, initialisez le schéma (tables, dimensions, faits) via un client SQL (DBeaver ou psql) en exécutant les scripts du dossier `sql/`.
 
-Le modèle de données est constitué comme suit :
+3. **Configuration des secrets (api) :**
 
-- **Table de Faits** (`fact_fuel_price`)
+    Créer un fichier .streamlit/secrets.toml :
 
-    C'est la table centrale qui enregistre l'historique des prix. Elle contient :
+    ```toml
+    GEMINI_API_KEY = "votre_cle_api"
+    ```
 
-    - Les clés étrangères vers les dimensions (`station_id`, `fuel_id`, `date_id`).
+4. **Lancement de l'ETL (Historique ou Temps Réel) :**
 
-    - La mesure : le prix du carburant (`price_value`) à un instant T.
+    ```Bash
+    # Pour l'historique XML
+    poetry run python src/import_history.py
 
-    - L'horodatage de la mise à jour (`update_time`).
+    # Pour la mise à jour API
+    poetry run python src/main.py
+    ```
 
-- **Tables de Dimensions**
+5. **Lancement du Dashboard :**
 
-    Elles apportent le contexte aux mesures :
+    ```Bash
+    poetry run streamlit run app.py
+    ```
 
-    - `dim_station` : Référentiel des points de vente (ID technique, adresse, ville, code postal, coordonnées GPS). Cette dimension gère l'unicité des stations.
+---
 
-    - `dim_fuel` : Typologie des carburants (Gazole, SP95, E10, etc.).
+## Architecture & Choix Techniques
 
-    - `dim_date` : Calendrier permettant des agrégations temporelles performantes (année, mois, jour, jour de la semaine).
+Cette section détaille la conception logique du projet.
+
+### 1. Modélisation des Données (Schéma en Étoile)
+
+Afin d’optimiser les performances de lecture analytique (OLAP), la base de données `fuel_db` est structurée selon un modèle dimensionnel.
+
+#### Table de Faits : `fact_fuel_price`
+
+Contient les mesures (> 47M lignes).
+
+- Clés étrangères : `station_id`, `fuel_id`, `date_id`  
+- Mesure : `price_value` (prix du carburant)  
+- Métadonnée : `update_time`  
+
+#### Dimensions : `dim_*`
+
+Apportent le contexte analytique.
+
+- `dim_station` : Unicité et géolocalisation des points de vente  
+- `dim_fuel` : Typologie (Gazole, SP95, etc.)  
+- `dim_date` : Agrégations temporelles  
+
+
+![Aperçu du schéma BDD et volumétrie](img/data_voulme.png)
+*Aperçu de la base de données : on note la table de faits de 9.3 Go et la vue matérialisée pour l'optimisation.*
+
+---
+
+### 2. Stratégie d’Ingestion Hybride (ETL)
+
+Le pipeline assure à la fois l’historique profond et la fraîcheur des données.
+
+#### Ingestion Historique (Batch)
+
+- Traitement des archives XML (2015–2025)  
+- Streaming par lots de 5000 lignes  
+- Prévention de la saturation mémoire  
+
+#### Ingestion Temps Réel (API)
+
+- Collecte journalière via API REST  
+- Pagination automatique  
+- Mécanisme d’Upsert pour gérer conflits et doublons  
+
+---
+
+### 3. Optimisation & Calculs
+
+#### Performance SQL
+
+- Index B-Tree  
+- Vues matérialisées (`mv_monthly_avg_price`)  
+- Transformation de requêtes coûteuses en lectures rapides (< 100 ms)  
+
+#### Moyenne Pondérée
+
+Pour éviter les biais géographiques, les prix moyens sont pondérés par le volume de relevés selon la formule :
+
+$$
+P_{pondéré} = \frac{\sum (Prix_{i} \times Volume_{i})}{\sum Volume_{i}}
+$$
+
+---
