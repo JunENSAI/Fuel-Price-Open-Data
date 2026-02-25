@@ -5,7 +5,7 @@ Ce projet vise à pratiquer l'exploitation de données publiques ouvertes sur le
 Les données proviennent de l'API officielle des prix des carburants en France :
 - HIstorique : https://www.prix-carburants.gouv.fr/rubrique/opendata/
 
-- API : https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-instantane-v2/records .
+- API : https://data.economie.gouv.fr/explore/dataset/prix-des-carburants-en-france-flux-instantane-v2/api/ .
 
 ## Structure du projet 
 
