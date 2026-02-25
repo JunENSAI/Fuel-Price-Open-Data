@@ -124,3 +124,44 @@ def get_dept_comparison(engine, year, fuel_name):
         ORDER BY annual_avg_price ASC
     """
     return load_data(sql, engine)
+
+def get_stations_with_latest_price(engine, dept_code, fuel_name, city_search=None):
+    """
+    Récupère la liste des stations d'un département avec leur DERNIER prix connu
+    pour le carburant demandé.
+    """
+    
+    city_filter = ""
+    if city_search:
+        clean_city = city_search.replace("'", "''")
+        city_filter = f"AND s.city ILIKE '%{clean_city}%'"
+
+    sql = f"""
+    WITH latest_prices AS (
+        SELECT 
+            fp.station_id,
+            fp.price_value,
+            fp.update_time,
+            ROW_NUMBER() OVER(PARTITION BY fp.station_id ORDER BY fp.update_time DESC) as rn
+        FROM fact_fuel_price fp
+        JOIN dim_station s ON fp.station_id = s.station_id
+        JOIN dim_fuel f ON fp.fuel_id = f.fuel_id
+        WHERE s.dept_code = '{dept_code}'
+          AND f.fuel_name = '{fuel_name}'
+          AND fp.update_time > CURRENT_DATE - INTERVAL '30 days' -- Optimisation: On regarde que le dernier mois
+    )
+    SELECT 
+        s.api_station_id,
+        s.address,
+        s.city,
+        s.latitude,
+        s.longitude,
+        lp.price_value,
+        lp.update_time
+    FROM dim_station s
+    JOIN latest_prices lp ON s.station_id = lp.station_id
+    WHERE s.dept_code = '{dept_code}'
+      AND lp.rn = 1 -- On ne garde que la ligne la plus récente
+      {city_filter}
+    """
+    return load_data(sql, engine)

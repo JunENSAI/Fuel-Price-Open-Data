@@ -1,7 +1,9 @@
 import streamlit as st
 from src.dashboard.database import get_db_engine
 from src.dashboard.tabs.stats_tab import render_stats_tab
-from src.dashboard.tabs.prices_tab import render_prices_tab 
+from src.dashboard.tabs.prices_tab import render_prices_tab
+from src.dashboard.tabs.map_tab import render_map_tab
+from src.dashboard.tabs.chatbot_tab import render_chatbot_tab
 
 st.set_page_config(
     page_title="Fuel Price Dashboard",
@@ -32,10 +34,10 @@ def main():
         render_prices_tab(engine)
         
     with tab3:
-        st.info("Module 'Carte' en construction...")
+        render_map_tab(engine)
 
     with tab4:
-        st.info("Module 'Chatbot' en construction...")
+        render_chatbot_tab(engine)
 
 if __name__ == "__main__":
     main()
