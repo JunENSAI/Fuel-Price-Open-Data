@@ -4,7 +4,7 @@ from ..ai_client import FuelAIClient
 def render_chatbot_tab(engine):
     st.header("🤖 Assistant IA (Text-to-SQL)")
     st.markdown("Posez des questions en langage naturel sur la base de données.")
-    st.info("Exemples : *'Quel est le prix moyen du Gazole en 2023 ?'*, *'Quelle station est la moins chère à Rennes ?'*, *'Montre l'évolution du prix de l'E85 dans le 33'*")
+    st.info("Exemples : *'Quel est le prix moyen du Gazole en 2023 ?'*")
 
     ai_client = FuelAIClient(engine)
 

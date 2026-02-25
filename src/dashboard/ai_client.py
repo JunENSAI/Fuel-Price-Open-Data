@@ -2,6 +2,7 @@ import streamlit as st
 from google import genai
 import pandas as pd
 from sqlalchemy import text
+import re
 
 class FuelAIClient:
     def __init__(self, engine):
@@ -16,35 +17,41 @@ class FuelAIClient:
         
         self.system_instruction = """
         Tu es un expert SQL PostgreSQL. Tu as accès à une base de données de prix des carburants.
-        Voici le schéma des tables :
+        
+        SCHEMA DES TABLES (à respecter scrupuleusement) :
 
         1. dim_station (Info stations)
-           - api_station_id (VARCHAR): ID unique
+           - station_id (INT): Clé primaire interne (PK) <-- à utiliser pour les jointures
+           - api_station_id (VARCHAR): ID Gouvernemental (ex: '3500001')
            - city (VARCHAR): Ville
-           - dept_code (VARCHAR): Code département (ex: '35', '75')
+           - dept_code (VARCHAR): Code département (ex: '35')
            - address (VARCHAR)
 
         2. dim_fuel (Info carburants)
+           - fuel_id (INT): Clé primaire (PK)
            - fuel_name (VARCHAR): Nom (Gazole, SP95, E10, E85, GPLc, SP98)
 
-        3. fact_fuel_price (Table de faits volumineuse - 50 millions lignes)
+        3. fact_fuel_price (Table de faits - Historique)
            - price_value (FLOAT): Prix au litre
            - update_time (TIMESTAMP): Date précise
-           - station_id, fuel_id (FK)
+           - station_id (INT): Clé étrangère (FK) vers dim_station.station_id
+           - fuel_id (INT): Clé étrangère (FK) vers dim_fuel.fuel_id
         
-        4. mv_monthly_avg_price (Vue Matérialisée - À PRIVILÉGIER pour les moyennes/stats)
+        4. mv_monthly_avg_price (Vue Matérialisée - À PRIVILÉGIER pour les moyennes)
            - year (INT), month (INT)
            - dept_code (VARCHAR)
            - fuel_name (VARCHAR)
-           - avg_price (FLOAT): Prix moyen
-           - price_count (INT): Nombre de relevés
+           - avg_price (FLOAT)
 
-        RÈGLES IMPORTANTES :
-        1. Si l'utilisateur demande une moyenne, une tendance ou une stat par département/année, UTILISE OBLIGATOIREMENT 'mv_monthly_avg_price'. C'est beaucoup plus rapide.
-        2. N'utilise 'fact_fuel_price' que si l'utilisateur demande un prix précis à une date précise ou pour une station spécifique.
-        3. Génère UNIQUEMENT le code SQL. Pas de balises markdown (```sql), pas d'explications avant ou après. Juste la requête brute.
-        4. La requête doit être en lecture seule (SELECT). Interdiction d'utiliser DELETE, UPDATE, DROP, INSERT.
-        5. Pour les recherches de ville, utilise ILIKE '%ville%'.
+        RÈGLES DE JOINTURE (CRUCIAL) :
+        - Pour joindre 'fact_fuel_price' et 'dim_station', utilise TOUJOURS : 
+          ON fact_fuel_price.station_id = dim_station.station_id
+        - NE JAMAIS joindre sur 'api_station_id'.
+
+        RÈGLES GÉNÉRALES :
+        1. Si on demande "le moins cher" ou un prix actuel précis : Utilise 'fact_fuel_price' et filtre sur la date la plus récente (ORDER BY update_time DESC LIMIT 1).
+        2. Pour les villes : Utilise ILIKE '%ville%'.
+        3. Pas de balises markdown, juste le code SQL pur.
         """
 
     def generate_sql(self, user_question):
@@ -62,9 +69,14 @@ class FuelAIClient:
 
     def execute_query(self, sql):
         """Exécute le SQL généré de manière sécurisée."""
-        forbidden = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "TRUNCATE"]
-        if any(word in sql.upper() for word in forbidden):
-            return None, " Sécurité : Cette requête contient des mots interdits."
+        forbidden_patterns = [
+            r"\bDROP\b", r"\bDELETE\b", r"\bUPDATE\b", 
+            r"\bINSERT\b", r"\bALTER\b", r"\bTRUNCATE\b"
+        ]
+        upper_sql = sql.upper()
+        for pattern in forbidden_patterns:
+            if re.search(pattern, upper_sql):
+                return None, f"Sécurité : Mot interdit détecté ({pattern.replace(r'\\b', '')})"
 
         try:
             with self.engine.connect() as conn:
